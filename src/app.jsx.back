@@ -1,0 +1,479 @@
+import { useState, useEffect } from 'react';
+import { Leaf, User, LogOut, Plus, ShoppingCart, History, Settings, Home, Trash2, LogIn } from 'lucide-react';
+
+// Supabase 연결 시도
+let supabase = null;
+let auth = null;
+let database = null;
+
+try {
+  const supabaseModule = await import('./lib/supabase.js');
+  supabase = supabaseModule.supabase;
+  auth = supabaseModule.auth;
+  database = supabaseModule.database;
+  console.log('✅ Supabase 모듈 로드 성공');
+} catch (error) {
+  console.error('❌ Supabase 모듈 로드 실패:', error);
+  console.log('Mock 데이터로 계속 진행합니다...');
+}
+
+// Mock 데이터 (Supabase 없을 때 사용)
+const mockUsers = [
+  { id: '1', email: 'seller@test.com', name: '판매자', user_type: 'seller' },
+  { id: '2', email: 'buyer@test.com', name: '구매자', user_type: 'buyer' }
+];
+
+const mockCredits = [
+  { 
+    id: '1', 
+    seller_id: '1', 
+    credit_type: 'KOC', 
+    quantity: 100, 
+    price: 15000, 
+    status: 'available',
+    profiles: { name: '판매자 A', company: 'Green Company' },
+    created_at: new Date().toISOString()
+  },
+  { 
+    id: '2', 
+    seller_id: '1', 
+    credit_type: 'KCU', 
+    quantity: 50, 
+    price: 18000, 
+    status: 'available',
+    profiles: { name: '판매자 A', company: 'Green Company' },
+    created_at: new Date().toISOString()
+  }
+];
+
+let mockTransactions = [];
+
+// 로그인 페이지
+function LoginPage({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegister, setIsRegister] = useState(false);
+  const [name, setName] = useState('');
+  const [userType, setUserType] = useState('buyer');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      if (isRegister) {
+        // 회원가입
+        if (auth) {
+          const { data, error } = await auth.signUp(email, password, {
+            name,
+            user_type: userType
+          });
+          
+          if (error) {
+            alert('회원가입 실패: ' + error.message);
+          } else {
+            alert('회원가입이 완료되었습니다!');
+            setIsRegister(false);
+          }
+        } else {
+          // Mock 회원가입
+          const newUser = {
+            id: Date.now().toString(),
+            email,
+            name,
+            user_type: userType
+          };
+          mockUsers.push(newUser);
+          alert('회원가입이 완료되었습니다!');
+          setIsRegister(false);
+        }
+      } else {
+        // 로그인
+        if (auth) {
+          const { data, error } = await auth.signIn(email, password);
+          
+          if (error) {
+            alert('로그인 실패: ' + error.message);
+          } else {
+            onLogin(data.user);
+          }
+        } else {
+          // Mock 로그인
+          const user = mockUsers.find(u => u.email === email);
+          if (user) {
+            onLogin(user);
+          } else {
+            alert('테스트 계정을 사용하세요.');
+          }
+        }
+      }
+    } catch (error) {
+      alert('오류가 발생했습니다: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-green-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-md">
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4">
+            <Leaf className="w-12 h-12 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">탄소배출권 거래소</h1>
+          <p className="text-gray-600 mt-2">
+            {isRegister ? '새 계정 만들기' : '로그인하여 시작하기'}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="email"
+            placeholder="이메일"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            required
+            disabled={loading}
+          />
+          
+          <input
+            type="password"
+            placeholder="비밀번호"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            required
+            disabled={loading}
+          />
+
+          {isRegister && (
+            <>
+              <input
+                type="text"
+                placeholder="이름"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                required
+                disabled={loading}
+              />
+              
+              <select
+                value={userType}
+                onChange={(e) => setUserType(e.target.value)}
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                disabled={loading}
+              >
+                <option value="buyer">구매자</option>
+                <option value="seller">판매자</option>
+              </select>
+            </>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-green-600 text-white p-3 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400"
+          >
+            {loading ? '처리중...' : (isRegister ? '회원가입' : '로그인')}
+          </button>
+        </form>
+
+        <div className="text-center mt-4">
+          <button
+            onClick={() => setIsRegister(!isRegister)}
+            className="text-green-600 hover:underline"
+            disabled={loading}
+          >
+            {isRegister ? '이미 계정이 있나요? 로그인' : '계정이 없나요? 회원가입'}
+          </button>
+        </div>
+
+        <div className="mt-6 text-sm text-gray-500">
+          <p>테스트 계정:</p>
+          <p>판매자: seller@test.com / 123456</p>
+          <p>구매자: buyer@test.com / 123456</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 네비게이션 바 (로그인 전)
+function GuestNavbar({ onLoginClick }) {
+  return (
+    <nav className="bg-green-600 text-white p-4">
+      <div className="container mx-auto flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <Leaf className="w-8 h-8" />
+          <h1 className="text-xl font-bold">탄소배출권 거래소</h1>
+        </div>
+        
+        <button
+          onClick={onLoginClick}
+          className="flex items-center space-x-2 bg-green-700 px-4 py-2 rounded hover:bg-green-800 transition-colors"
+        >
+          <LogIn className="w-4 h-4" />
+          <span>로그인</span>
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+// 네비게이션 바 (로그인 후)
+function Navbar({ user, onLogout, currentPage, setCurrentPage, profile }) {
+  return (
+    <nav className="bg-green-600 text-white p-4">
+      <div className="container mx-auto flex justify-between items-center">
+        <button
+          onClick={() => setCurrentPage('main')}
+          className="flex items-center space-x-2 hover:bg-green-700 px-3 py-2 rounded transition-colors"
+        >
+          <Leaf className="w-8 h-8" />
+          <h1 className="text-xl font-bold">탄소배출권 거래소</h1>
+        </button>
+        
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setCurrentPage('main')}
+            className={`px-3 py-2 rounded ${currentPage === 'main' ? 'bg-green-700' : 'hover:bg-green-700'}`}
+          >
+            <Home className="w-4 h-4 inline mr-1" />
+            메인
+          </button>
+          
+          {profile?.user_type === 'seller' && (
+            <>
+              <button
+                onClick={() => setCurrentPage('register')}
+                className={`px-3 py-2 rounded ${currentPage === 'register' ? 'bg-green-700' : 'hover:bg-green-700'}`}
+              >
+                <Plus className="w-4 h-4 inline mr-1" />
+                배출권 등록
+              </button>
+              
+              <button
+                onClick={() => setCurrentPage('my-credits')}
+                className={`px-3 py-2 rounded ${currentPage === 'my-credits' ? 'bg-green-700' : 'hover:bg-green-700'}`}
+              >
+                <ShoppingCart className="w-4 h-4 inline mr-1" />
+                내 배출권
+              </button>
+            </>
+          )}
+          
+          <button
+            onClick={() => setCurrentPage('history')}
+            className={`px-3 py-2 rounded ${currentPage === 'history' ? 'bg-green-700' : 'hover:bg-green-700'}`}
+          >
+            <History className="w-4 h-4 inline mr-1" />
+            거래내역
+          </button>
+          
+          <button
+            onClick={() => setCurrentPage('mypage')}
+            className={`px-3 py-2 rounded ${currentPage === 'mypage' ? 'bg-green-700' : 'hover:bg-green-700'}`}
+          >
+            <Settings className="w-4 h-4 inline mr-1" />
+            마이페이지
+          </button>
+          
+          <div className="flex items-center space-x-2 border-l pl-4">
+            <User className="w-4 h-4" />
+            <span>{profile?.name || user?.name || '사용자'}</span>
+            <button
+              onClick={onLogout}
+              className="hover:bg-green-700 p-1 rounded"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// 메인 페이지
+function MainPage({ credits, onBuy, user, profile }) {
+  return (
+    <div className="container mx-auto p-4">
+      <div className="text-center mb-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">탄소배출권 거래소</h2>
+        <p className="text-gray-600">환경을 위한 첫 걸음, 탄소배출권으로 시작하세요</p>
+      </div>
+      
+      <div className="mb-6">
+        <h3 className="text-xl font-bold mb-4">판매 중인 배출권</h3>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {credits?.filter(credit => credit.status === 'available').map(credit => (
+            <div key={credit.id} className="bg-white rounded-lg shadow-md p-6 border">
+              <div className="flex justify-between items-start mb-4">
+                <h4 className="text-lg font-semibold text-gray-800">
+                  {credit.credit_type} 배출권
+                </h4>
+                <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm">
+                  판매중
+                </span>
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                <p className="text-gray-600">
+                  <span className="font-medium">판매자:</span> {credit.profiles?.name || '익명'}
+                  {credit.profiles?.company && ` (${credit.profiles.company})`}
+                </p>
+                <p className="text-gray-600">
+                  <span className="font-medium">수량:</span> {credit.quantity?.toLocaleString()} tCO₂
+                </p>
+                <p className="text-gray-600">
+                  <span className="font-medium">단가:</span> {credit.price?.toLocaleString()}원/tCO₂
+                </p>
+                <p className="text-xl font-bold text-green-600">
+                  총액: {((credit.quantity || 0) * (credit.price || 0)).toLocaleString()}원
+                </p>
+                {credit.description && (
+                  <p className="text-sm text-gray-500">{credit.description}</p>
+                )}
+              </div>
+              
+              {profile?.user_type === 'buyer' && user && (
+                <button
+                  onClick={() => onBuy(credit)}
+                  className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition-colors"
+                >
+                  구매하기
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        {!credits || credits.filter(credit => credit.status === 'available').length === 0 && (
+          <div className="text-center py-12">
+            <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500">등록된 배출권이 없습니다.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 간단한 페이지 컴포넌트들
+function RegisterPage() {
+  return (
+    <div className="container mx-auto p-4">
+      <h2 className="text-2xl font-bold mb-6">배출권 등록</h2>
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <p className="text-gray-600">배출권 등록 기능 (개발 중)</p>
+      </div>
+    </div>
+  );
+}
+
+function MyCreditsPage() {
+  return (
+    <div className="container mx-auto p-4">
+      <h2 className="text-2xl font-bold mb-6">내 배출권 관리</h2>
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <p className="text-gray-600">내 배출권 관리 기능 (개발 중)</p>
+      </div>
+    </div>
+  );
+}
+
+function HistoryPage() {
+  return (
+    <div className="container mx-auto p-4">
+      <h2 className="text-2xl font-bold mb-6">거래내역</h2>
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <p className="text-gray-600">거래내역 기능 (개발 중)</p>
+      </div>
+    </div>
+  );
+}
+
+function MyPage() {
+  return (
+    <div className="container mx-auto p-4">
+      <h2 className="text-2xl font-bold mb-6">마이페이지</h2>
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <p className="text-gray-600">마이페이지 기능 (개발 중)</p>
+      </div>
+    </div>
+  );
+}
+
+// 메인 앱 컴포넌트
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [currentPage, setCurrentPage] = useState('main');
+  const [credits, setCredits] = useState(mockCredits);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    console.log('🚀 앱이 시작되었습니다!');
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    setProfile(userData);
+    setShowLogin(false);
+    setCurrentPage('main');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setProfile(null);
+    setCurrentPage('main');
+    setShowLogin(false);
+  };
+
+  const handleBuyCredit = (credit) => {
+    if (confirm(`${credit.credit_type} 배출권을 구매하시겠습니까?`)) {
+      alert('구매가 완료되었습니다! (Demo)');
+    }
+  };
+
+  // 로그인 페이지 표시
+  if (showLogin) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {user && profile ? (
+        <Navbar 
+          user={user}
+          profile={profile}
+          onLogout={handleLogout}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+        />
+      ) : (
+        <GuestNavbar onLoginClick={() => setShowLogin(true)} />
+      )}
+      
+      <main>
+        {currentPage === 'main' && (
+          <MainPage 
+            credits={credits} 
+            onBuy={handleBuyCredit} 
+            user={user}
+            profile={profile}
+          />
+        )}
+        {currentPage === 'register' && <RegisterPage />}
+        {currentPage === 'my-credits' && <MyCreditsPage />}
+        {currentPage === 'history' && <HistoryPage />}
+        {currentPage === 'mypage' && <MyPage />}
+      </main>
+    </div>
+  );
+}
